@@ -1,0 +1,149 @@
+<launch>
+  <arg name="episode_json" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval/ros_eval_episode.json"/>
+  <arg name="metrics_dir" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval"/>
+  <arg name="use_rviz" default="true"/>
+  <arg name="start_delay" default="2.0"/>
+
+  <arg name="map_size_x" default="20.0"/>
+  <arg name="map_size_y" default="20.0"/>
+  <arg name="map_size_z" default="8.0"/>
+  <arg name="voxel_resolution" default="1.0"/>
+
+  <node pkg="map_generator" name="map_generator" type="random_forest" output="screen">
+    <param name="episode_json" value="$(arg episode_json)"/>
+    <param name="seed" value="7"/>
+    <param name="map/x_size" value="$(arg map_size_x)"/>
+    <param name="map/y_size" value="$(arg map_size_y)"/>
+    <param name="map/z_size" value="$(arg map_size_z)"/>
+    <param name="map/resolution" value="0.25"/>
+    <param name="map/voxel_resolution" value="$(arg voxel_resolution)"/>
+    <param name="map/obs_num" value="8"/>
+    <param name="map/circle_num" value="0"/>
+    <param name="init_state_x" value="1.5"/>
+    <param name="init_state_y" value="1.5"/>
+    <param name="sensing/radius" value="3.5"/>
+    <param name="sensing/rate" value="10.0"/>
+    <param name="min_distance" value="2.0"/>
+  </node>
+
+  <node pkg="traj_bridge" name="traj_bridge" type="traj_bridge_node" output="screen">
+    <param name="episode_json" value="$(arg episode_json)"/>
+    <param name="voxel_resolution" value="$(arg voxel_resolution)"/>
+    <param name="knot_interval" value="1.0"/>
+    <param name="map/min_x" value="0.0"/>
+    <param name="map/min_y" value="0.0"/>
+    <param name="map/min_z" value="0.0"/>
+    <param name="map/max_x" value="$(arg map_size_x)"/>
+    <param name="map/max_y" value="$(arg map_size_y)"/>
+    <param name="map/max_z" value="$(arg map_size_z)"/>
+  </node>
+
+  <node pkg="traj_bridge" name="ros_eval_playback" type="ros_eval_playback.py" output="screen">
+    <param name="episode_json" value="$(arg episode_json)"/>
+    <param name="metrics_dir" value="$(arg metrics_dir)"/>
+    <param name="frame_id" value="world"/>
+    <param name="start_delay" value="$(arg start_delay)"/>
+    <param name="rate" value="1.0"/>
+  </node>
+
+  <group ns="uav1">
+    <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="quadrotor_simulator_so3" output="screen">
+      <param name="rate/odom" value="200.0"/>
+      <param name="simulator/init_state_x" value="1.5"/>
+      <param name="simulator/init_state_y" value="1.5"/>
+      <param name="simulator/init_state_z" value="1.5"/>
+      <remap from="~odom" to="/uav1/sim/odom"/>
+      <remap from="~cmd" to="/uav1/so3_cmd"/>
+    </node>
+    <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="so3_control" output="screen">
+      <param name="so3_control/init_state_x" value="1.5"/>
+      <param name="so3_control/init_state_y" value="1.5"/>
+      <param name="so3_control/init_state_z" value="1.5"/>
+      <remap from="~odom" to="/uav1/sim/odom"/>
+      <remap from="~position_cmd" to="/uav1/planning/pos_cmd"/>
+      <remap from="~so3_cmd" to="/uav1/so3_cmd"/>
+      <rosparam file="$(find so3_control)/config/gains_hummingbird.yaml"/>
+      <rosparam file="$(find so3_control)/config/corrections_hummingbird.yaml"/>
+      <param name="mass" value="0.98"/>
+    </node>
+    <node pkg="ego_planner" name="traj_server" type="traj_server" output="screen">
+      <remap from="/position_cmd" to="/uav1/planning/pos_cmd"/>
+      <param name="traj_server/time_forward" value="1.0"/>
+    </node>
+    <node pkg="odom_visualization" name="odom_visualization" type="odom_visualization" output="screen">
+      <remap from="~odom" to="/uav1/sim/odom"/>
+      <param name="color/r" value="1.0"/>
+      <param name="color/g" value="0.1"/>
+      <param name="color/b" value="0.1"/>
+      <param name="robot_scale" value="1.0"/>
+    </node>
+  </group>
+
+  <group ns="uav2">
+    <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="quadrotor_simulator_so3" output="screen">
+      <param name="rate/odom" value="200.0"/>
+      <param name="simulator/init_state_x" value="1.5"/>
+      <param name="simulator/init_state_y" value="18.5"/>
+      <param name="simulator/init_state_z" value="1.5"/>
+      <remap from="~odom" to="/uav2/sim/odom"/>
+      <remap from="~cmd" to="/uav2/so3_cmd"/>
+    </node>
+    <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="so3_control" output="screen">
+      <param name="so3_control/init_state_x" value="1.5"/>
+      <param name="so3_control/init_state_y" value="18.5"/>
+      <param name="so3_control/init_state_z" value="1.5"/>
+      <remap from="~odom" to="/uav2/sim/odom"/>
+      <remap from="~position_cmd" to="/uav2/planning/pos_cmd"/>
+      <remap from="~so3_cmd" to="/uav2/so3_cmd"/>
+      <rosparam file="$(find so3_control)/config/gains_hummingbird.yaml"/>
+      <rosparam file="$(find so3_control)/config/corrections_hummingbird.yaml"/>
+      <param name="mass" value="0.98"/>
+    </node>
+    <node pkg="ego_planner" name="traj_server" type="traj_server" output="screen">
+      <remap from="/position_cmd" to="/uav2/planning/pos_cmd"/>
+      <param name="traj_server/time_forward" value="1.0"/>
+    </node>
+    <node pkg="odom_visualization" name="odom_visualization" type="odom_visualization" output="screen">
+      <remap from="~odom" to="/uav2/sim/odom"/>
+      <param name="color/r" value="0.1"/>
+      <param name="color/g" value="0.8"/>
+      <param name="color/b" value="0.1"/>
+      <param name="robot_scale" value="1.0"/>
+    </node>
+  </group>
+
+  <group ns="uav3">
+    <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="quadrotor_simulator_so3" output="screen">
+      <param name="rate/odom" value="200.0"/>
+      <param name="simulator/init_state_x" value="18.5"/>
+      <param name="simulator/init_state_y" value="1.5"/>
+      <param name="simulator/init_state_z" value="1.5"/>
+      <remap from="~odom" to="/uav3/sim/odom"/>
+      <remap from="~cmd" to="/uav3/so3_cmd"/>
+    </node>
+    <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="so3_control" output="screen">
+      <param name="so3_control/init_state_x" value="18.5"/>
+      <param name="so3_control/init_state_y" value="1.5"/>
+      <param name="so3_control/init_state_z" value="1.5"/>
+      <remap from="~odom" to="/uav3/sim/odom"/>
+      <remap from="~position_cmd" to="/uav3/planning/pos_cmd"/>
+      <remap from="~so3_cmd" to="/uav3/so3_cmd"/>
+      <rosparam file="$(find so3_control)/config/gains_hummingbird.yaml"/>
+      <rosparam file="$(find so3_control)/config/corrections_hummingbird.yaml"/>
+      <param name="mass" value="0.98"/>
+    </node>
+    <node pkg="ego_planner" name="traj_server" type="traj_server" output="screen">
+      <remap from="/position_cmd" to="/uav3/planning/pos_cmd"/>
+      <param name="traj_server/time_forward" value="1.0"/>
+    </node>
+    <node pkg="odom_visualization" name="odom_visualization" type="odom_visualization" output="screen">
+      <remap from="~odom" to="/uav3/sim/odom"/>
+      <param name="color/r" value="0.1"/>
+      <param name="color/g" value="0.25"/>
+      <param name="color/b" value="1.0"/>
+      <param name="robot_scale" value="1.0"/>
+    </node>
+  </group>
+
+  <node if="$(arg use_rviz)" pkg="rviz" name="rviz" type="rviz" args="-d $(find ego_planner)/launch/safe_ctde.rviz"/>
+</launch>

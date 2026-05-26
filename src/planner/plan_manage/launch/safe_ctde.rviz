@@ -1,0 +1,86 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Reference Frame: world
+    - Class: rviz/PointCloud2
+      Enabled: true
+      Name: Safe-CTDE Obstacles
+      Topic: /map_generator/global_cloud
+      Size (m): 0.05
+      Style: Points
+      Color Transformer: FlatColor
+      Color: 70; 70; 70
+    - Class: rviz/Path
+      Enabled: true
+      Name: UAV1 Python Path
+      Topic: /uav1/python_traj
+      Color: 255; 40; 40
+    - Class: rviz/Path
+      Enabled: true
+      Name: UAV2 Python Path
+      Topic: /uav2/python_traj
+      Color: 40; 220; 40
+    - Class: rviz/Path
+      Enabled: true
+      Name: UAV3 Python Path
+      Topic: /uav3/python_traj
+      Color: 40; 80; 255
+    - Class: rviz/Marker
+      Enabled: true
+      Name: UAV1 Path Marker
+      Marker Topic: /safe_ctde_mace/uav1/python_path_marker
+    - Class: rviz/Marker
+      Enabled: true
+      Name: UAV2 Path Marker
+      Marker Topic: /safe_ctde_mace/uav2/python_path_marker
+    - Class: rviz/Marker
+      Enabled: true
+      Name: UAV3 Path Marker
+      Marker Topic: /safe_ctde_mace/uav3/python_path_marker
+    - Class: rviz/Odometry
+      Enabled: true
+      Name: UAV1 Odom
+      Topic: /uav1/sim/odom
+      Color: 255; 40; 40
+    - Class: rviz/Odometry
+      Enabled: true
+      Name: UAV2 Odom
+      Topic: /uav2/sim/odom
+      Color: 40; 220; 40
+    - Class: rviz/Odometry
+      Enabled: true
+      Name: UAV3 Odom
+      Topic: /uav3/sim/odom
+      Color: 40; 80; 255
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: world
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 35
+      Focal Point:
+        X: 10
+        Y: 10
+        Z: 3
+      Name: Current View
+      Pitch: 0.8
+      Yaw: 0.8
+Window Geometry:
+  Height: 900
+  Width: 1400

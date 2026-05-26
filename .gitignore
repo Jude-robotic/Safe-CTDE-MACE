@@ -1,0 +1,40 @@
+# Build directories
+build/
+devel/
+install/
+
+# Catkin workspace
+.catkin_workspace
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+.vscode/settings.json
+
+# Logs and artifacts
+logs/
+artifacts/
+checkpoints/
+*.pt
+*.pth
+
+# Media
+*.png
+*.gif
+*.mp4
+
+# OS
+.DS_Store
