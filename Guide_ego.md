@@ -86,6 +86,15 @@ roslaunch ego_planner simple_run.launch use_rviz:=false
 - `quadrotor_simulator_so3` 发布 `/uav{i}/sim/odom`；
 - 退出 launch 时写入 `result/ros_eval/ros_execution_metrics.csv`。
 
+### 2.4 RVIZ 视图约定
+
+`safe_ctde.rviz` 统一做了以下显示调整，便于对比轨迹与障碍物：
+
+- 背景色使用淡暖色 `255; 253; 224`，减少灰度遮蔽；
+- 障碍物点云（Safe-CTDE Obstacles）使用 ego-planner 蓝色 `85; 170; 255`，Style=Boxes，Size=0.1，Alpha=1；
+- 增加三机 mesh marker：`/uav1/odom_visualization/robot`、`/uav2/odom_visualization/robot`、`/uav3/odom_visualization/robot`；
+- 增加动态 path：`/uav{i}/odom_visualization/path`，对应每机实时轨迹。
+
 ## 3. ROS 图与文件职责
 
 ### 3.1 核心链路
@@ -236,3 +245,331 @@ wrote .../ros_execution_metrics.csv
 - `export_ros_eval.py` 生成 `coverage=0.901 success=True episode_length=98` 的 JSON；
 - `roslaunch --files/--nodes ego_planner simple_run.launch use_rviz:=false` 通过；
 - `timeout 12s roslaunch ego_planner simple_run.launch use_rviz:=false` 可发布三机 path/B-spline 并写出 ROS 执行指标。
+
+## 8. 优化记录 (2026-05-28)
+
+### 8.1 问题诊断
+
+当前大场景训练虽然 `success=True`，达到成功指标，但存在以下缺陷：
+
+| 问题 | 现状 | 根因 |
+|---|---|---|
+| `repeated_coverage_ratio` | 0.95-0.99 | Candidate 生成缺乏跨机协调感知，reservation 事后生效 |
+| 轨迹折线飞行 | 平滑性差 | EGO planner 用 A* seed + 简陋 smoothing，缺少 kinodynamic optimization |
+
+### 8.2 解决方案架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  高层RL策略 (Region-level policy)                            │
+│  输入: global state + graph embedding                        │
+│  输出: 每个agent的region_id + intra-region执行优先级          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  图结构层 (Frontier Region Graph)                           │
+│  - Nodes: frontier cluster centroids                        │
+│  - Edges: spatial adjacency + A* distance                   │
+│  - Node features: unknown count, density, position, status   │
+│  - 更新频率: 每 step 重建                                     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  底层执行 (Intra-region path planning)                      │
+│  - A*/RRT* 在 region 内部选具体 voxel goal                  │
+│  - EGO-style trajectory optimization (minimum-snap)         │
+│  - Safety shield 碰撞检测                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 8.3 P0 快速修复 [已完成]
+
+**配置文件 `qmix_ego_large.yaml`**（2026-05-28 已合并）：
+
+```yaml
+reward:
+  w_repeat: 0.8    # 0.6 → 0.8，增强重复覆盖惩罚
+  w_overlap: 1.0   # 1.5 → 1.0，调整重叠惩罚
+
+environment:
+  reservation_radius: 4  # 2 → 4，扩大预留半径
+```
+
+**完成状态**：已实现。`w_repeat=0.8`、`w_overlap=1.0`、`reservation_radius=4` 均已在 `qmix_ego_large.yaml` 中配置。
+
+**效果**：立竿见影，约 1 天可完成，主要缓解重复覆盖问题。
+
+### 8.4 P1 核心改动：图引导的候选生成 [已完成]
+
+**完成状态**：
+- `mapping/frontier_graph.py` - 已实现并集成到 `frontier_detector.py`
+- `marl/graph_attention.py` - 已创建但**未集成**到 QNetwork
+
+**新增文件 `mapping/frontier_graph.py`**：
+
+```python
+class RegionNode:
+    """区域节点：代表一组相邻 frontier voxel 的聚类"""
+    centroid: tuple[int, int, int]      # 聚类中心
+    voxels: list[tuple[int, int, int]]   # 聚类内所有 voxel
+    coverage_potential: float            # 覆盖潜力
+
+class FrontierGraph:
+    """区域级 frontier 图结构"""
+    connection_tolerance: float          # 聚类连接容忍度
+    nodes: list[RegionNode]              # 区域节点列表
+    adjacency: dict[int, set[int]]       # 邻接关系
+
+    def build_from_frontiers(frontiers)  # BFS 聚类构建图
+    def get_region_candidates(max_regions) # 返回按 coverage_potential 排序的候选
+    def mark_reservation(region_idx)     # 标记某 region 被 reservation
+```
+
+**修改 `mapping/frontier_detector.py`**（已集成）：
+
+- 导入 `FrontierGraph`
+- `generate_candidates()` 集成 region-level candidate 生成：
+  1. 先用 `FrontierGraph.build_from_frontiers(frontiers)` 构建区域图
+  2. 用 `region_graph.get_region_candidates()` 获取 region-level 候选
+  3. 再与原有 voxel-level candidate 合并评分
+  4. 最终选择时既考虑 region 多样性，也考虑 voxel 粒度
+
+**新增文件 `marl/graph_attention.py`**（已创建但未集成）：
+
+```python
+class GraphAttentionLayer(nn.Module):
+    """图注意力层：基于空间关系的多智能体意图预测"""
+    # 多头注意力机制
+    # 输入: agent_features, edge_index
+    # 输出: 聚合后的特征
+
+class AgentIntentPredictor(nn.Module):
+    """基于图注意力的邻居意图预测器"""
+    # 预测每个 agent 的邻居可能会选择哪个 candidate
+
+def build_communication_edges(positions, comm_range):
+    """基于通信范围构建边索引"""
+```
+
+**预留接口（待集成到 QNetwork）**：
+
+```python
+class QNetwork(nn.Module):
+    def __init__(self, input_dim, num_actions, hidden_dim=256,
+                 region_embed_dim=0,   # P1: region embedding 维度
+                 use_gat_attention=False):  # P1: GAT attention 预留
+    # 支持 region_embedding 输入拼接
+```
+
+**效果**：1-2 周，核心解决重复覆盖问题。
+
+### 8.5 P2 轨迹平滑 [已完成]
+
+**修改 `planning/ego_planner.py`**（已实现）：
+
+```python
+class EGOStylePlanner:
+    def __init__(self, ..., optimize_iterations=100):  # 30 → 100
+        self.optimize_iterations = 100
+
+    def _optimize_control_points(self, points, states):
+        # P2: 添加 minimum-snap 目标函数
+        for iteration in range(self.optimize_iterations):
+            progress = iteration / (self.optimize_iterations - 1)
+            # 动态调整权重：前期重平滑，后期重避障
+            current_smooth = self.smooth_weight * (1.0 - 0.3 * progress)
+            current_obstacle = self.obstacle_weight * (1.0 + 0.5 * progress)
+
+            for index in range(1, len(optimized) - 1):
+                # minimum-snap 平滑项（4阶差分）
+                snap_term = (optimized[index-2] - 4*optimized[index-1] + 6*current
+                             - 4*optimized[index+1] + optimized[index+2])
+                smooth_push = 0.5*(optimized[index-1] + optimized[index+1]) - current \
+                              + 0.1 * snap_term
+                # ... 避障项 ...
+```
+
+**关键改动**（已实现）：
+- `optimize_iterations`: 30 → 100（已提升）
+- 添加 `snap_term`（4阶差分）作为 minimum-snap 平滑目标
+- 动态权重：smooth_weight 前期更强，obstacle_weight 后期更强
+
+**效果**：2-3 周，解决轨迹折线飞行问题。
+
+### 8.6 验收指标
+
+| 指标 | 当前值 | 目标值 | 测量方法 | 完成状态 |
+|------|--------|--------|----------|----------|
+| `repeated_coverage_ratio` | 0.95-0.99 | < 0.30 | `EpisodeMetrics.repeated_coverage_ratio` | P0/P1 已实施，待验证 |
+| `trajectory_smoothness_cost` | 高（折线） | 降低 50% | `ContinuousTrajectory.metrics()["smoothness_cost"]` | P2 已实施，待验证 |
+| `coverage_ratio` | ~0.90 | >= 0.90 | 最终 `coverage_ratio` 不降低 | 已有基线 |
+| `success_rate` | 有 | 不降低 | 100次评估的成功率 | 已有基线 |
+
+### 8.7 下一阶段计划
+
+完成状态一览：
+- P0 快速修复 [已完成]：配置参数调整（w_repeat, w_overlap, reservation_radius）
+- P1 核心改动 [已完成]：frontier_graph.py 已实现并集成；graph_attention.py 已创建但未集成
+- P2 轨迹平滑 [已完成]：minimum-snap 和动态权重已实现
+- P3 增强图注意力集成 [待集成]：graph_attention.py 已创建，需集成到 QNetwork.forward
+- P4 显式分工层 [未实现]
+- P5 课程学习 [未实现]
+
+如果 P0/P1/P2 实施后 `repeated_coverage_ratio` 仍 > 0.30，考虑：
+- P4：显式分工层 - 软 Voronoi region + frontier cluster penalty
+- P5：课程学习 - 小地图低目标 → 大地图高目标
+
+### 8.8 2026-05-28 迭代优化记录
+
+**问题重新诊断：**
+用户指出4000 episodes的"成功"实际上是"假成功"——靠重复探索硬凑覆盖率，效率极低。真正目标是：多无人机高效分工、一次覆盖到位、降低重复探索。
+
+**新策略：分阶段、保守调整**
+
+#### 阶段1（2026-05-28）：配置回退
+修改 `qmix_ego_large.yaml`：
+```yaml
+reward:
+  w_repeat: 0.3      # 0.8 → 0.3
+  w_overlap: 0.5     # 1.0 → 0.5
+  w_info: 2.0        # 1.5 → 2.0
+
+environment:
+  reservation_radius: 2   # 4 → 2
+```
+
+#### 阶段2（2026-05-28）：验证训练稳定性
+- 训练：200 episodes
+- 结果：**eval_success_rate=1.0, eval_coverage=0.901** ✅
+- 但 repeated_coverage_ratio=0.975，仍在高位
+
+#### 阶段3（2026-05-28）：软分工机制
+修改 `frontier_detector.py`：
+- 新增 `_compute_responsibility_penalty()` 方法
+- 在 candidate 评分中加入 `w_division * responsibility_penalty`
+- 新增配置 `w_division: 1.5`
+
+#### 阶段4/4b/4c（2026-05-28）：responsibility_penalty调参迭代
+
+| 阶段 | w_division | success_rate | coverage | 说明 |
+|------|------------|--------------|----------|------|
+| 阶段4 | 1.5 | 0.700 | 0.894 | 过重，无限重复 |
+| 阶段4b | 0.5 | 0.400 | 0.888 | 仍过重 |
+| 阶段4c | 0.0 | 0.800 | 0.901 | 完全移除后恢复 |
+
+**根因分析（review agent）：**
+- responsibility_penalty是冗余的强制分散机制
+- 已有机制（reserved_penalty, neighbor_overlap, late_reassignment）已足够
+- 强制分散反而干扰了协作覆盖效率
+
+#### 阶段5：确认最终配置
+- **结论：移除responsibility_penalty，使用阶段2配置**
+- 配置：
+  - w_repeat: 0.3
+  - w_overlap: 0.5
+  - w_info: 2.0
+  - reservation_radius: 2
+  - w_division: 0.0
+
+#### 阶段6：最终长时训练
+- 训练：1000 episodes
+- 使用配置：阶段2基础配置（无responsibility_penalty）
+- 验收：success_rate >= 0.95, coverage >= 0.90
+
+**当前核心发现：**
+- responsibility_penalty（强制分散）不能解决问题
+- 协作分工应由已有机制（late_reassignment等）处理
+- 后续改进方向：增强late_reassignment参数，而非强制分工
+
+## 9. 2026-05-29 改进验证结果
+
+### 9.1 代码改进内容
+
+**轨迹平滑性增强（ego_planner.py）**：
+- `__init__` 添加 `min_segment_length=2.0` 和 `max_jerk=2.0` 参数
+- `optimize_iterations` 从80提升到150
+- `_compress_path` 添加 `min_segment_length` 检查，避免过短段被保留
+- `_optimize_control_points` 添加速度/加速度/jerk约束投影
+
+**候选多样性增强（frontier_detector.py）**：
+- `CandidateFeatureLayout` 添加 `spatial_exclusivity` 属性（feature size 11 + max_neighbors）
+- `candidate_score` 增加 `spatial_exclusivity` 权重 +0.5
+- `generate_candidates` 添加空间分块预过滤（`_grid_filter_candidates`）
+- `compute_features` 添加 `spatial_exclusivity` 特征计算
+
+**配置文件更新（qmix_ego_large.yaml）**：
+| 参数 | 原值 | 新值 |
+|------|------|------|
+| `ego_optimize_iterations` | 80 | 150 |
+| `ego_smooth_weight` | 0.25 | 0.30 |
+| `num_frontier_candidates` | 10 | 12 |
+| `candidate_min_separation` | 2.0 | 2.5 |
+| `late_reassign_min_coverage` | 0.50 | 0.60 |
+| `late_reassign_zero_gain_streak` | 3 | 2 |
+
+### 9.2 训练结果（3000 episodes）
+
+**训练命令**：
+```bash
+cd /home/jude/Safe_ego_planner/Safe-CTDE-MACE
+export PYTHONPATH=/home/jude/Safe_ego_planner/Safe-CTDE-MACE:$PYTHONPATH
+/home/jude/anaconda3/envs/uav_rl/bin/python -m safe_ctde_mace.scripts.train_qmix \
+  --config safe_ctde_mace/configs/qmix_ego_large.yaml \
+  --episodes 3000 \
+  --device cuda \
+  --num-envs 4 \
+  --artifact-dir artifacts/qmix_large_train_3000 \
+  --output checkpoints/qmix_large_3000.pt
+```
+
+**训练输出摘要**：
+- 总episodes: 3000
+- 最终checkpoint: `checkpoints/qmix_large_3000.pt`
+- 训练历史: `artifacts/qmix_large_train_3000/train_history.csv`
+
+**评估结果（10 episodes）**：
+```
+episodes=10 coverage_mean=0.900 success_rate=0.800 episode_length_mean=86.2
+last_trace plateau_step=81 first_hover_step=21 first_collision_step=21
+first_planner_failure_step=None max_zero_gain_streak=1 planner_failures=0
+physical_links_mean=2.94 effective_links_mean=2.94
+```
+
+| 指标 | 值 | 说明 |
+|------|------|------|
+| `coverage_mean` | 0.900 | 达到90%覆盖率目标 |
+| `success_rate` | 0.800 | 10次中8次成功 |
+| `episode_length_mean` | 86.2 | 平均步数 |
+| `repeated_coverage_ratio` | 0.94-0.99 | 仍然较高（未显著改善） |
+| `planner_failures` | 0 | 规划器无失败 |
+
+### 9.3 问题回答：泛化性
+
+**使用固定场景训练出来的策略在新场景下能否保持成功率？**
+
+答案：**目前训练不具有泛化性**，原因：
+1. 当前训练采用固定地图 `[20,20,8]`、固定初始位置、固定障碍物分布
+2. QMIX 策略网络学习的是从**特定起点**到**特定障碍物布局**的最优动作映射
+3. 网络权重编码了对该特定地图的覆盖路径偏好
+4. 如果障碍物位置完全改变，原本的路径可能不再可达或不再最优
+
+**提升泛化性的方法（未来工作）**：
+- 课程学习：从小地图到大地图，逐渐增加难度
+- 域随机化：训练时随机化障碍物位置、地图大小、无人机数量
+- 更通用的状态表示：使用遮挡地图而非绝对坐标
+
+### 9.4 结论与下一轮建议
+
+**本次改进效果评估**：
+- ✅ 轨迹平滑性参数已增强（迭代次数、约束投影）
+- ✅ 候选多样性机制已添加（空间分块、独占性评分）
+- ⚠️ `repeated_coverage_ratio` 仍然较高（0.94-0.99），未能显著降低
+- ⚠️ `success_rate=0.800` 未达到 >= 0.90 目标
+
+**下一轮修改建议**：
+1. 进一步调整 `w_repeat` 和 `w_overlap` 权重，尝试更激进的重复惩罚
+2. 考虑增加 `spatial_block_grid` 的分块数量（从5x5x5减少到更细粒度）
+3. 尝试降低 `late_reassign_min_coverage` 到 0.50，使其更早触发重分配
+4. 考虑添加 agent 之间的直接通信信息交换机制

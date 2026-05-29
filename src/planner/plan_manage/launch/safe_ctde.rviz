@@ -13,10 +13,11 @@ Visualization Manager:
       Enabled: true
       Name: Safe-CTDE Obstacles
       Topic: /map_generator/global_cloud
-      Size (m): 0.05
-      Style: Points
+      Size (m): 0.1
+      Style: Boxes
       Color Transformer: FlatColor
-      Color: 70; 70; 70
+      Color: 85; 170; 255
+      Alpha: 1
     - Class: rviz/Path
       Enabled: true
       Name: UAV1 Python Path
@@ -32,6 +33,21 @@ Visualization Manager:
       Name: UAV3 Python Path
       Topic: /uav3/python_traj
       Color: 40; 80; 255
+    - Class: rviz/Path
+      Enabled: true
+      Name: UAV1 Odom Path
+      Topic: /uav1/odom_visualization/path
+      Color: 255; 40; 40
+    - Class: rviz/Path
+      Enabled: true
+      Name: UAV2 Odom Path
+      Topic: /uav2/odom_visualization/path
+      Color: 40; 220; 40
+    - Class: rviz/Path
+      Enabled: true
+      Name: UAV3 Odom Path
+      Topic: /uav3/odom_visualization/path
+      Color: 40; 80; 255
     - Class: rviz/Marker
       Enabled: true
       Name: UAV1 Path Marker
@@ -44,6 +60,18 @@ Visualization Manager:
       Enabled: true
       Name: UAV3 Path Marker
       Marker Topic: /safe_ctde_mace/uav3/python_path_marker
+    - Class: rviz/Marker
+      Enabled: true
+      Name: UAV1 Mesh
+      Marker Topic: /uav1/odom_visualization/robot
+    - Class: rviz/Marker
+      Enabled: true
+      Name: UAV2 Mesh
+      Marker Topic: /uav2/odom_visualization/robot
+    - Class: rviz/Marker
+      Enabled: true
+      Name: UAV3 Mesh
+      Marker Topic: /uav3/odom_visualization/robot
     - Class: rviz/Odometry
       Enabled: true
       Name: UAV1 Odom
@@ -61,7 +89,7 @@ Visualization Manager:
       Color: 40; 80; 255
   Enabled: true
   Global Options:
-    Background Color: 48; 48; 48
+    Background Color: 255; 253; 224
     Fixed Frame: world
     Frame Rate: 30
   Name: root

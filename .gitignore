@@ -23,6 +23,8 @@ env/
 .idea/
 .vscode/
 .vscode/settings.json
+.claude/
+.claude.bak.*/
 
 # Logs and artifacts
 logs/
