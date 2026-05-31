@@ -573,3 +573,156 @@ physical_links_mean=2.94 effective_links_mean=2.94
 2. 考虑增加 `spatial_block_grid` 的分块数量（从5x5x5减少到更细粒度）
 3. 尝试降低 `late_reassign_min_coverage` 到 0.50，使其更早触发重分配
 4. 考虑添加 agent 之间的直接通信信息交换机制
+
+## 10. 2026-05-29 GAT通信机制 + 域随机化改进
+
+### 10.1 本次改进内容
+
+**GAT通信机制修复（graph_attention.py）**：
+- `GraphAttentionLayer.forward`：使用 edge_index 构建稀疏注意力，正确融合相对位置编码
+- `AgentIntentPredictor.forward`：调用 `build_communication_edges` 构建通信边
+- `frontier_detector.py`：`neighbor_intent_penalty` 方法正确接收 `candidate_idx` 参数（第260-262行）
+
+**域随机化增强（voxel_world.py）**：
+- 新增 `randomize_obstacles_domain` 方法：对所有障碍物应用统一随机平移，保持结构增加多样性
+
+**配置文件更新（qmix_ego_large.yaml）**：
+```yaml
+environment:
+  randomize_obstacles: true
+  obstacle_jitter_mode: "global_shift"
+  obstacle_shift_range: 5
+  gat_hidden_dim: 64
+  gat_num_heads: 2
+```
+
+### 10.2 2500 episodes训练结果
+
+**训练命令**：
+```bash
+/home/jude/anaconda3/envs/uav_rl/bin/python -m safe_ctde_mace.scripts.train_qmix \
+  --config safe_ctde_mace/configs/qmix_ego_large.yaml \
+  --episodes 2500 \
+  --device cuda \
+  --num-envs 4 \
+  --artifact-dir artifacts/qmix_large_train_2500 \
+  --output checkpoints/qmix_large_2500.pt
+```
+
+**训练结果**：
+- 总episodes: 2500
+- 最终checkpoint: `checkpoints/qmix_large_2500.pt`
+- 训练历史: `artifacts/qmix_large_train_2500/train_history.csv`
+
+**评估结果（10 episodes）**：
+```
+episodes=10 coverage_mean=0.891 success_rate=0.600 episode_length_mean=94.5
+last_trace plateau_step=100 first_hover_step=35 first_collision_step=35
+first_planner_failure_step=None max_zero_gain_streak=2 planner_failures=0
+physical_links_mean=2.95 effective_links_mean=2.95
+```
+
+| 指标 | 值 | 说明 |
+|------|------|------|
+| `coverage_mean` | 0.891 | 接近90%目标 |
+| `success_rate` | 0.600 | 10次中6次成功 |
+| `episode_length_mean` | 94.5 | 平均步数 |
+| `repeated_coverage_ratio` | ~0.95-0.99 | 仍然较高 |
+| `planner_failures` | 0 | 规划器无失败 |
+
+### 10.3 课程学习设计方案
+
+详见 `Safe-CTDE-MACE/course.md`：
+
+| 阶段 | 地图尺寸 | 障碍物 | 目标覆盖率 | 预期episodes |
+|------|----------|--------|------------|--------------|
+| 1 Easy | 10×10×4 | 无 | 0.60 | 500 |
+| 2 Medium | 15×15×6 | 少 | 0.75 | 800 |
+| 3 Hard | 20×20×8 | 当前 | 0.85 | 1000 |
+| 4 Generalization | 20×20×8 | 域随机化 | 0.90 | 1500 |
+
+**注意**：当前课程学习设计存在维度不兼容问题（见11.3节），建议暂不启用课程学习。
+
+## 11. 2026-05-30 改进记录
+
+### 11.1 本次改进内容
+
+**问题诊断**：
+- 2500 episodes训练后 `success_rate=0.600`（目标>=0.90）
+- `repeated_coverage_ratio=0.95-0.99`，仍然较高
+- 域随机化和GAT通信机制增加了训练不稳定性
+
+**改进措施**：
+
+#### 1. 禁用域随机化
+**文件**: `safe_ctde_mace/configs/qmix_ego_large.yaml`
+
+```yaml
+# 第46行已修改
+randomize_obstacles: false  # true → false
+# obstacle_jitter_mode: "global_shift"  # 已注释
+# obstacle_shift_range: 5  # 已注释
+```
+
+**原因**：域随机化导致训练不稳定，每次reset时障碍物位置随机偏移，使得观测空间不稳定。
+
+#### 2. GAT正确集成到QNetwork
+**文件**: `safe_ctde_mace/marl/networks.py`
+
+- QNetwork新增GAT支持：
+  - `use_gat_attention=True`（默认启用）
+  - `gat_hidden_dim=64`, `gat_num_heads=2`
+- forward方法接收 `neighbor_features` 和 `edge_index` 参数
+- GAT输出通过GraphAttentionLayer聚合邻居信息
+
+**文件**: `safe_ctde_mace/marl/qmix.py`
+
+- QMIXAgent从training_config读取GAT配置
+- train_step方法处理neighbor_obs，传递给QNetwork
+
+#### 3. 修复_predict_neighbor_intents中的Bug
+**文件**: `safe_ctde_mace/envs/multi_uav_env.py`（第617-628行）
+
+**原错误代码**：
+```python
+for agent in self.agents:
+    # ...
+    feats = self.current_candidates[0].features  # 始终使用第一个agent的特征！
+```
+
+**修复后**：
+```python
+for i, agent in enumerate(self.agents):
+    # ...
+    if i < len(self.current_candidates):
+        feats = self.current_candidates[i].features  # 使用当前agent自己的特征
+```
+
+### 11.2 课程学习评估
+
+**问题发现**：`course.md` 中的课程学习设计存在以下问题：
+
+1. **文档自相矛盾**：`course.md` 中存在两个互相冲突的课程设计版本（章节2.1和2.2），且配置示例中 `num_frontier_candidates` 不一致（Stage 1 用 8，其他阶段用 12）
+
+2. **维度不兼容问题未彻底解决**：
+   - Stage 1/2 使用 10×10×4 地图
+   - Stage 3 使用 15×15×6 地图
+   - Stage 4 使用 20×20×8 地图
+   - 每个阶段的观测维度不同，网络权重无法直接迁移
+
+3. **建议**：暂不启用课程学习，继续使用当前的单一配置（20×20×8）进行训练，直到GAT和协调机制稳定后再考虑课程学习。
+
+### 11.3 改进效果预期
+
+| 改进项 | 预期效果 |
+|--------|----------|
+| 禁用域随机化 | 消除训练不稳定性，成功率应提升 |
+| GAT正确集成 | 减少重复覆盖，协同更高效 |
+| Bug修复 | 每个agent使用自己的候选特征，意图预测更准确 |
+
+### 11.4 验收标准
+
+训练后应达到：
+- `success_rate >= 0.90`
+- `coverage >= 0.90`
+- `repeated_coverage_ratio < 0.50`（最终目标 < 0.30）

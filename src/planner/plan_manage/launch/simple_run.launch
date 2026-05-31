@@ -1,5 +1,5 @@
 <launch>
-  <arg name="episode_json" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval/ros_eval_episode.json"/>
+  <arg name="episode_json" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval/qmix3000_episode.json"/>
   <arg name="metrics_dir" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval"/>
   <arg name="use_rviz" default="true"/>
   <arg name="start_delay" default="2.0"/>
