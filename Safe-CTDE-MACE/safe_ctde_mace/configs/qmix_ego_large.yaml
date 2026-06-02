@@ -1,0 +1,77 @@
+seed: 7
+
+environment:
+  grid_size: [20, 20, 8]
+  voxel_resolution: 1.0
+  num_uavs: 3
+  sensor_range: 3.5
+  comm_range: 20.0
+  global_sync_interval: 0
+  safe_obs_dist: 1.0
+  safe_agent_dist: 1.5
+  max_velocity: 1.0
+  max_acceleration: 1.0
+  max_steps: 100
+  target_coverage_ratio: 0.90
+  local_patch_radius: 4
+  num_frontier_candidates: 10
+  candidate_min_separation: 2.0
+  reservation_radius: 2
+  late_reassign_enabled: true
+  late_reassign_min_coverage: 0.50
+  late_reassign_zero_gain_streak: 3
+  late_reassign_window: 5
+  late_reassign_max_mean_gain: 5.0
+  astar_connectivity: 6
+  planner_type: ego
+  trajectory_sample_dt: 0.5
+  trajectory_execution_dt: 1.0
+  ego_optimize_iterations: 80
+  ego_smooth_weight: 0.25
+  ego_obstacle_weight: 1.2
+  ego_seed_connectivity: 26
+  max_neighbors: 2
+  initial_positions:
+    - [1, 1, 1]
+    - [1, 18, 1]
+    - [18, 1, 1]
+  obstacle_generation:
+    random_boxes: 8
+    min_box_size: [1, 1, 1]
+    max_box_size: [3, 3, 3]
+    manual_boxes:
+      - min_corner: [8, 8, 0]
+        max_corner: [11, 11, 5]
+
+reward:
+  w_new: 2.0
+  w_info: 1.5
+  w_repeat: 0.6
+  w_overlap: 1.5
+  w_collision: 10.0
+  w_obstacle: 10.0
+  w_time: 0.02
+  w_energy: 0.02
+  w_reserve: 0.8
+  w_finish: 15.0
+  w_progress: 3.0
+
+training:
+  device: cuda
+  num_envs: 4
+  learning_rate: 0.001
+  gamma: 0.99
+  batch_size: 64
+  replay_capacity: 8000
+  warmup_steps: 256
+  target_update_interval: 100
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_decay_steps: 25000
+  hidden_dim: 512
+  mixer_hidden_dim: 128
+  hypernet_hidden_dim: 256
+  num_episodes: 500
+  save_interval: 50
+  checkpoint_dir: checkpoints
+  log_dir: logs
