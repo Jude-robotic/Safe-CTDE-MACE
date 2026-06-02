@@ -3,11 +3,21 @@
   <arg name="metrics_dir" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval"/>
   <arg name="use_rviz" default="true"/>
   <arg name="start_delay" default="2.0"/>
+  <arg name="rviz_config" default="$(find ego_planner)/launch/safe_ctde.rviz"/>
 
   <arg name="map_size_x" default="20.0"/>
   <arg name="map_size_y" default="20.0"/>
   <arg name="map_size_z" default="8.0"/>
   <arg name="voxel_resolution" default="1.0"/>
+  <arg name="uav1_init_x" default="1.5"/>
+  <arg name="uav1_init_y" default="1.5"/>
+  <arg name="uav1_init_z" default="1.5"/>
+  <arg name="uav2_init_x" default="1.5"/>
+  <arg name="uav2_init_y" default="18.5"/>
+  <arg name="uav2_init_z" default="1.5"/>
+  <arg name="uav3_init_x" default="18.5"/>
+  <arg name="uav3_init_y" default="1.5"/>
+  <arg name="uav3_init_z" default="1.5"/>
 
   <node pkg="map_generator" name="map_generator" type="random_forest" output="screen">
     <param name="episode_json" value="$(arg episode_json)"/>
@@ -19,8 +29,8 @@
     <param name="map/voxel_resolution" value="$(arg voxel_resolution)"/>
     <param name="map/obs_num" value="8"/>
     <param name="map/circle_num" value="0"/>
-    <param name="init_state_x" value="1.5"/>
-    <param name="init_state_y" value="1.5"/>
+    <param name="init_state_x" value="$(arg uav1_init_x)"/>
+    <param name="init_state_y" value="$(arg uav1_init_y)"/>
     <param name="sensing/radius" value="3.5"/>
     <param name="sensing/rate" value="10.0"/>
     <param name="min_distance" value="2.0"/>
@@ -49,16 +59,16 @@
   <group ns="uav1">
     <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="quadrotor_simulator_so3" output="screen">
       <param name="rate/odom" value="200.0"/>
-      <param name="simulator/init_state_x" value="1.5"/>
-      <param name="simulator/init_state_y" value="1.5"/>
-      <param name="simulator/init_state_z" value="1.5"/>
+      <param name="simulator/init_state_x" value="$(arg uav1_init_x)"/>
+      <param name="simulator/init_state_y" value="$(arg uav1_init_y)"/>
+      <param name="simulator/init_state_z" value="$(arg uav1_init_z)"/>
       <remap from="~odom" to="/uav1/sim/odom"/>
       <remap from="~cmd" to="/uav1/so3_cmd"/>
     </node>
     <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="so3_control" output="screen">
-      <param name="so3_control/init_state_x" value="1.5"/>
-      <param name="so3_control/init_state_y" value="1.5"/>
-      <param name="so3_control/init_state_z" value="1.5"/>
+      <param name="so3_control/init_state_x" value="$(arg uav1_init_x)"/>
+      <param name="so3_control/init_state_y" value="$(arg uav1_init_y)"/>
+      <param name="so3_control/init_state_z" value="$(arg uav1_init_z)"/>
       <remap from="~odom" to="/uav1/sim/odom"/>
       <remap from="~position_cmd" to="/uav1/planning/pos_cmd"/>
       <remap from="~so3_cmd" to="/uav1/so3_cmd"/>
@@ -82,16 +92,16 @@
   <group ns="uav2">
     <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="quadrotor_simulator_so3" output="screen">
       <param name="rate/odom" value="200.0"/>
-      <param name="simulator/init_state_x" value="1.5"/>
-      <param name="simulator/init_state_y" value="18.5"/>
-      <param name="simulator/init_state_z" value="1.5"/>
+      <param name="simulator/init_state_x" value="$(arg uav2_init_x)"/>
+      <param name="simulator/init_state_y" value="$(arg uav2_init_y)"/>
+      <param name="simulator/init_state_z" value="$(arg uav2_init_z)"/>
       <remap from="~odom" to="/uav2/sim/odom"/>
       <remap from="~cmd" to="/uav2/so3_cmd"/>
     </node>
     <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="so3_control" output="screen">
-      <param name="so3_control/init_state_x" value="1.5"/>
-      <param name="so3_control/init_state_y" value="18.5"/>
-      <param name="so3_control/init_state_z" value="1.5"/>
+      <param name="so3_control/init_state_x" value="$(arg uav2_init_x)"/>
+      <param name="so3_control/init_state_y" value="$(arg uav2_init_y)"/>
+      <param name="so3_control/init_state_z" value="$(arg uav2_init_z)"/>
       <remap from="~odom" to="/uav2/sim/odom"/>
       <remap from="~position_cmd" to="/uav2/planning/pos_cmd"/>
       <remap from="~so3_cmd" to="/uav2/so3_cmd"/>
@@ -115,16 +125,16 @@
   <group ns="uav3">
     <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="quadrotor_simulator_so3" output="screen">
       <param name="rate/odom" value="200.0"/>
-      <param name="simulator/init_state_x" value="18.5"/>
-      <param name="simulator/init_state_y" value="1.5"/>
-      <param name="simulator/init_state_z" value="1.5"/>
+      <param name="simulator/init_state_x" value="$(arg uav3_init_x)"/>
+      <param name="simulator/init_state_y" value="$(arg uav3_init_y)"/>
+      <param name="simulator/init_state_z" value="$(arg uav3_init_z)"/>
       <remap from="~odom" to="/uav3/sim/odom"/>
       <remap from="~cmd" to="/uav3/so3_cmd"/>
     </node>
     <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="so3_control" output="screen">
-      <param name="so3_control/init_state_x" value="18.5"/>
-      <param name="so3_control/init_state_y" value="1.5"/>
-      <param name="so3_control/init_state_z" value="1.5"/>
+      <param name="so3_control/init_state_x" value="$(arg uav3_init_x)"/>
+      <param name="so3_control/init_state_y" value="$(arg uav3_init_y)"/>
+      <param name="so3_control/init_state_z" value="$(arg uav3_init_z)"/>
       <remap from="~odom" to="/uav3/sim/odom"/>
       <remap from="~position_cmd" to="/uav3/planning/pos_cmd"/>
       <remap from="~so3_cmd" to="/uav3/so3_cmd"/>
@@ -145,5 +155,5 @@
     </node>
   </group>
 
-  <node if="$(arg use_rviz)" pkg="rviz" name="rviz" type="rviz" args="-d $(find ego_planner)/launch/safe_ctde.rviz"/>
+  <node if="$(arg use_rviz)" pkg="rviz" name="rviz" type="rviz" args="-d $(arg rviz_config)"/>
 </launch>

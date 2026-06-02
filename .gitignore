@@ -2,6 +2,8 @@
 build/
 devel/
 install/
+markdown/
+picture/
 
 # Catkin workspace
 .catkin_workspace
@@ -24,12 +26,14 @@ env/
 .vscode/
 .vscode/settings.json
 .claude/
+.codex/
+.agents/
 .claude.bak.*/
 
 # Logs and artifacts
 logs/
-artifacts/
-checkpoints/
+Safe-CTDE-MACE/artifacts/
+Safe-CTDE-MACE/results/
 *.pt
 *.pth
 

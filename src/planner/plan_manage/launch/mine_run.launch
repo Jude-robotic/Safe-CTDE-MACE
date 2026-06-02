@@ -1,0 +1,27 @@
+<launch>
+  <arg name="episode_json" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval_mine/ros_eval_episode.json"/>
+  <arg name="metrics_dir" default="/home/jude/Safe_ego_planner/Safe-CTDE-MACE/result/ros_eval_mine"/>
+  <arg name="use_rviz" default="true"/>
+  <arg name="start_delay" default="2.0"/>
+
+  <include file="$(find ego_planner)/launch/safe_ctde_multi_uav.launch">
+    <arg name="episode_json" value="$(arg episode_json)"/>
+    <arg name="metrics_dir" value="$(arg metrics_dir)"/>
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="start_delay" value="$(arg start_delay)"/>
+    <arg name="rviz_config" value="$(find ego_planner)/launch/safe_ctde_mine.rviz"/>
+    <arg name="map_size_x" value="50.0"/>
+    <arg name="map_size_y" value="50.0"/>
+    <arg name="map_size_z" value="20.0"/>
+    <arg name="voxel_resolution" value="1.0"/>
+    <arg name="uav1_init_x" value="6.5"/>
+    <arg name="uav1_init_y" value="8.5"/>
+    <arg name="uav1_init_z" value="6.5"/>
+    <arg name="uav2_init_x" value="25.5"/>
+    <arg name="uav2_init_y" value="36.5"/>
+    <arg name="uav2_init_z" value="10.5"/>
+    <arg name="uav3_init_x" value="42.5"/>
+    <arg name="uav3_init_y" value="42.5"/>
+    <arg name="uav3_init_z" value="14.5"/>
+  </include>
+</launch>
